@@ -1,0 +1,314 @@
+/*
+Grenade Trail 2.1
+Author: Jim&&David Peng
+
+Cvars:
+grenade_tr: default 2
+0 - None
+1 - Random Colors
+2 - Nade Specific
+3 - Team Specific
+
+grenade_he "255000000" set the trail color of Hegrenade
+grenade_fb "000000255" set the trail color of Flashbang
+grenade_sg "000255000" set the trail color of Smokegrenade
+*/
+
+#include <amxmodx>
+#include <csx>
+#include <engine>
+#include <fakemeta>
+#include <cstrike>
+#include <hamsandwich>
+#include <unlimited_money>
+
+#define PLUGIN "Grenade Trail Super Version"
+#define VERSION "1.0"
+#define AUTHOR "David Peng&Jim"
+
+
+
+
+new g_cvar_tr
+new g_cvar_he
+new g_cvar_fb
+new g_cvar_sg
+new r, g, b
+new HasBuy[33]
+new g_maxplayers,g_money;
+
+new g_explode,g_trail,g_kulou,g_kulou2,g_wave1;
+
+new const sprite_cylinder[] = { "sprites/shockwave.spr" }
+new const sprite_kulou[] = {"models/garbagegibs.mdl" }
+new const sprite_smoke[] = {"sprites/laserbeam.spr"}
+new const sprite_kulou2[] = {"models/skeleton.mdl"}
+new const sprite_gwave[] = {"sprites/gwave1.spr"}
+
+public plugin_init()
+{
+	register_plugin(PLUGIN, VERSION, AUTHOR)
+	register_clcmd("buyxuancai", "buy_xuancai")
+	g_cvar_tr = register_cvar("grenade_tr", "2")
+	g_cvar_he = register_cvar("grenade_he", "255000000")
+	g_cvar_fb = register_cvar("grenade_fb", "000000255")
+	g_cvar_sg = register_cvar("grenade_sg", "000255000")
+	RegisterHam(Ham_Think, "grenade", "fw_ThinkGrenade");
+	register_event("HLTV", "EventNewRound", "a", "1=0", "2=0")
+	register_forward(FM_SetModel, "fw_SetModel")
+	g_maxplayers = get_maxplayers();
+}
+
+public plugin_precache()
+{
+	g_explode = engfunc(EngFunc_PrecacheModel, sprite_cylinder)
+	g_trail = engfunc(EngFunc_PrecacheModel, sprite_smoke)
+	g_kulou = engfunc(EngFunc_PrecacheModel, sprite_kulou)
+	g_kulou2 = engfunc(EngFunc_PrecacheModel, sprite_kulou2)
+	g_wave1 = engfunc(EngFunc_PrecacheModel, sprite_gwave)
+}
+
+public client_connect(id)
+{
+	HasBuy[id] = 0;	
+}
+
+public EventNewRound()
+{
+	new member=0
+	for(new id=1; id<=g_maxplayers; id++)
+	 {
+		if(HasBuy[id]==1)
+		{
+			member++
+			HasBuy[member]=0;
+		}
+		if (!is_user_alive(id)||!(get_user_flags(id)&ADMIN_LEVEL_F))
+		{
+			HasBuy[id]=0;
+		}
+	}
+}
+
+public fw_SetModel(entity, const model[])
+{
+	static attacker
+	static Float:dmgtime
+	attacker = pev(entity, pev_owner)
+	if(get_user_flags(attacker)&ADMIN_IMMUNITY&&HasBuy[attacker]==1){
+		pev(entity, pev_dmgtime, dmgtime)
+		if (equal(model[7], "w_hegrenade", 4)&&dmgtime != 0.0)
+		{					
+			fm_set_rendering(entity,  kRenderFxGlowShell, 255, 0, 0, kRenderNormal, 255)
+		}
+		else if (equal(model[7], "w_", 2)&&dmgtime == 0.0)
+		{					
+			fm_set_rendering(entity,  kRenderFxGlowShell, 255, 0, 0, kRenderNormal, 25)
+		}
+		
+	}
+}
+
+
+public grenade_throw(id, gid, wid)
+{
+	new gtm = get_pcvar_num(g_cvar_tr)
+	if(!gtm) return
+	switch(gtm)
+	{
+		case 1:
+		{
+			r = random(256)
+			g = random(256)
+			b = random(256)
+		}
+		case 2:
+		{
+			new nade, color[10]
+			switch(wid)
+			{
+				case CSW_HEGRENADE:	nade = g_cvar_he
+					case CSW_FLASHBANG:	nade = g_cvar_fb
+					case CSW_SMOKEGRENADE:	nade = g_cvar_sg
+				}
+			get_pcvar_string(nade, color, 9)
+			new c = str_to_num(color)
+			r = c / 1000000
+			c %= 1000000 
+			g = c / 1000
+			b = c % 1000
+		}
+		case 3:
+		{
+			switch(get_user_team(id))
+			{
+				case 1: r = 255
+					case 2: b = 255
+				}
+		}
+	}
+	create_beamfollow(gid,g_trail,10,6,r,g,b,255)
+	entity_set_int(gid, EV_INT_effects, EF_BRIGHTFIELD)
+}
+public fw_ThinkGrenade(ent)	
+{
+	static attacker
+	new szModels[32]
+	attacker = pev(ent, pev_owner)
+	if(HasBuy[attacker]==1){
+		pev(ent, pev_model, szModels, charsmax(szModels))	
+		if (!equal(szModels, "models/w_hegrenade.mdl"))		
+			return HAM_IGNORED
+		if(!pev_valid(ent))
+			return HAM_IGNORED
+		
+		static Float:dmgtime	
+		pev(ent, pev_dmgtime, dmgtime)
+		if (dmgtime > get_gametime())
+		{
+			return HAM_IGNORED
+		}
+		blastcircles(ent)
+		
+	}
+	return HAM_IGNORED
+}
+
+public blastcircles(id)
+{
+	static Float:origin[3]
+	pev(id, pev_origin, origin)
+	create_cylinder(origin, 385, g_explode, 0, 0, 6, 60, 0, 255, 0, 0, 175, 0)
+	create_cylinder(origin, 470, g_explode, 0, 0, 6, 60, 0, 255, 0, 0, 150, 0)
+	create_cylinder(origin, 555, g_explode, 0, 0, 6, 60, 0, 255, 0, 15, 100, 0)
+	create_cylinder(origin, 700, g_kulou, 0, 0, 6, 60, 0, 255, 0, 0, 150, 0)
+	create_explosion(origin,g_wave1,50,15,4)
+	create_breakmodel(origin,g_kulou2)
+}
+
+public buy_xuancai(id)
+{
+	new dpport[222],D_name[32];
+	get_user_name(id, D_name, 31);
+	g_money = cs_get_user_money2(id);
+	if(HasBuy[id]==1)
+	{
+		format(dpport,222,"^x03您已经获得了该道具！")
+		client_color(id,id,dpport)
+		return PLUGIN_HANDLED;
+	}
+	if(!is_user_connected(id)) return PLUGIN_HANDLED;
+	if(!is_user_alive(id)) return PLUGIN_HANDLED;
+	if(g_money>=300)
+	{
+		cs_set_user_money2(id, g_money - 300)
+		HasBuy[id]=1;
+		format(dpport,222,"^x01【^x04提示^x01】^x03%s^01购买了^x03【^x04炫彩手雷^x03】^x01，独领风骚！",D_name)
+		client_color(0, id, dpport)
+	}
+	else if(g_money<300||HasBuy[id]==0)
+	{
+		format(dpport,222,"^x01你没有足够的资金购买^x03【^x04炫彩手雷^x03】^x01！")
+		client_color(id, id, dpport)
+	}
+	return PLUGIN_CONTINUE;
+}
+
+stock create_cylinder(const Float:origin[3], addrad, sprite, startfrate, framerate, life, width, amplitude, red, green, blue, brightness, speed)
+{
+	engfunc(EngFunc_MessageBegin, MSG_PVS, SVC_TEMPENTITY, origin, 0)
+	write_byte(TE_BEAMCYLINDER)
+	engfunc(EngFunc_WriteCoord, origin[0]) // x
+	engfunc(EngFunc_WriteCoord, origin[1]) // y
+	engfunc(EngFunc_WriteCoord, origin[2]) // z
+	engfunc(EngFunc_WriteCoord, origin[0]) // x axis
+	engfunc(EngFunc_WriteCoord, origin[1]) // y axis
+	engfunc(EngFunc_WriteCoord, origin[2]+addrad) 
+	write_short(sprite)
+	write_byte(startfrate)
+	write_byte(framerate)
+	write_byte(life)
+	write_byte(width)
+	write_byte(amplitude)
+	write_byte(red)
+	write_byte(green)
+	write_byte(blue)
+	write_byte(brightness)
+	write_byte(speed)
+	message_end()
+}
+
+stock create_beamfollow(entity,sprite,life,width,red,green,blue,brightness)
+{
+	message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+	write_byte(TE_BEAMFOLLOW)
+	write_short(entity)
+	write_short(sprite)
+	write_byte(life)
+	write_byte(width)
+	write_byte(red)
+	write_byte(green)
+	write_byte(blue)
+	write_byte(brightness)
+	message_end()
+}
+
+stock create_breakmodel(const Float:origin[3],sprite)
+{
+	
+	message_begin(MSG_BROADCAST,SVC_TEMPENTITY); 
+	write_byte(108); // TE_BREAKMODEL 
+	engfunc(EngFunc_WriteCoord, origin[0]) // x
+	engfunc(EngFunc_WriteCoord, origin[1]) // y
+	engfunc(EngFunc_WriteCoord, origin[2]) // z
+	write_coord(16); // size x 
+	write_coord(16); // size y 
+	write_coord(16); // size z 
+	write_coord(random_num(-50,50)); // velocity x 
+	write_coord(random_num(-50,50)); // velocity y 
+	write_coord(25); // velocity z 
+	write_byte(35); // random velocity 
+	write_short(sprite); // model index that you want to break 
+	write_byte(10); // count 
+	write_byte(15); // life 
+	write_byte(0x00); // flags: BREAK_GLASS 
+	message_end();  
+	
+}
+
+stock create_explosion(const Float:origin[3],sprite,scale,framerate,flags)
+{
+	message_begin(MSG_BROADCAST, SVC_TEMPENTITY)
+	write_byte(TE_EXPLOSION) // Temporary entity ID
+	engfunc(EngFunc_WriteCoord, origin[0]) // engfunc because float
+	engfunc(EngFunc_WriteCoord, origin[1])
+	engfunc(EngFunc_WriteCoord, origin[2])
+	write_short(sprite) // sprite index
+	write_byte(scale) // scale in 0.1's
+	write_byte(framerate) // framerate
+	write_byte(flags) // flags
+	message_end()
+}
+
+
+stock fm_set_rendering(entity, fx = kRenderFxNone, r = 255, g = 255, b = 255, render = kRenderNormal, amount = 16) {
+	new Float:RenderColor[3];
+	RenderColor[0] = float(r);
+	RenderColor[1] = float(g);
+	RenderColor[2] = float(b);
+	
+	set_pev(entity, pev_renderfx, fx);
+	set_pev(entity, pev_rendercolor, RenderColor);
+	set_pev(entity, pev_rendermode, render);
+	set_pev(entity, pev_renderamt, float(amount));
+	
+	return 1;
+}  
+
+public client_color(playerid,colorid,msg[])
+{
+	message_begin(playerid?MSG_ONE:MSG_ALL, get_user_msgid("SayText"), {0,0,0}, playerid) 
+	write_byte(colorid)
+	write_string(msg)
+	message_end()
+}
